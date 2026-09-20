@@ -24,11 +24,11 @@ export default async function StatistiekenPage() {
               <span className="block h-2 flex-1 overflow-hidden rounded-full bg-navy/9">
                 <span
                   className="block h-2 bg-navy-light"
-                  style={{ width: `${p.attendancePct}%` }}
+                  style={{ width: `${p.attendancePct ?? 0}%` }}
                 />
               </span>
               <span className="font-mono w-[34px] flex-none text-right text-[12px]">
-                {p.attendancePct}%
+                {p.attendancePct === null ? "–" : `${p.attendancePct}%`}
               </span>
             </div>
           ))}

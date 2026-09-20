@@ -1,75 +1,45 @@
 import { google } from "googleapis";
 import { unstable_cache } from "next/cache";
 import { placeholderTeamData } from "@/data/placeholder-team-data";
-import type { Fine, FineTariff, Player, TeamData } from "./types";
+import type { TeamData } from "./types";
+import {
+  buildFines,
+  buildPlayers,
+  buildTariffs,
+  parseAttendance,
+  parseSquadInfo,
+} from "./sheet-parsers";
 
 /**
- * Expected sheet layout (tab name → columns), see docs/google-sheets-setup.md:
- *  - Players: nr, name, nickname, position, played, minutes, goals, assists,
- *             attendancePct, yellowCards, redCards, motm, streak, fines, note
- *  - Fines:   date, player, reason, amount
- *  - Tariffs: reason, amount
+ * Real H13 spreadsheets (see docs/google-sheets-setup.md):
+ *  - GOOGLE_SHEET_ID        → "H13 gegevens": tab 'H13 spelerslijst' (squad) +
+ *                             tab 'Aanwezigheid jaar 4' (availability matrix).
+ *  - GOOGLE_FINES_SHEET_ID  → "H13 Boetesoverzicht 2026/27": tab 'Boetes'
+ *                             (+ optional 'Tarieven'). Defaults to GOOGLE_SHEET_ID.
+ *
+ * The site only shows data the sheets actually track: squad, positions, notes,
+ * attendance % and streaks (derived from the Ja/Nee matrix), and fines. Match
+ * stats (goals/assists/minutes/cards/MOTM) aren't tracked anywhere, so they
+ * stay at 0 and the UI hides those columns instead of showing fake zeros.
  */
 const RANGES = {
-  players: "Players!A2:O",
-  fines: "Fines!A2:D",
-  tariffs: "Tariffs!A2:B",
+  players: "'H13 spelerslijst'!A2:H200",
+  attendance: "'Aanwezigheid jaar 4'!A1:Z200",
+  fines: "Boetes!A2:E200",
+  tariffs: "Tarieven!A2:B100",
 };
 
 function getCredentials() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const rawKey = process.env.GOOGLE_PRIVATE_KEY;
-  const sheetId = process.env.GOOGLE_SHEET_ID;
-  if (!email || !rawKey || !sheetId) return null;
-  return { email, privateKey: rawKey.replace(/\\n/g, "\n"), sheetId };
-}
-
-function toNumber(value: string | undefined, fallback = 0): number {
-  if (value === undefined || value === "") return fallback;
-  const n = Number(String(value).replace(",", "."));
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function rowsToPlayers(rows: string[][]): Player[] {
-  return rows
-    .filter((row) => row[0])
-    .map((row) => ({
-      nr: toNumber(row[0]),
-      name: row[1] ?? "",
-      nickname: row[2] ?? "",
-      position: row[3] ?? "",
-      played: toNumber(row[4]),
-      minutes: toNumber(row[5]),
-      goals: toNumber(row[6]),
-      assists: toNumber(row[7]),
-      attendancePct: toNumber(row[8]),
-      yellowCards: toNumber(row[9]),
-      redCards: toNumber(row[10]),
-      motm: toNumber(row[11]),
-      streak: toNumber(row[12]),
-      fines: toNumber(row[13]),
-      note: row[14] ?? "",
-    }));
-}
-
-function rowsToFines(rows: string[][]): Fine[] {
-  return rows
-    .filter((row) => row[0])
-    .map((row) => ({
-      date: row[0] ?? "",
-      player: row[1] ?? "",
-      reason: row[2] ?? "",
-      amount: toNumber(row[3]),
-    }));
-}
-
-function rowsToTariffs(rows: string[][]): FineTariff[] {
-  return rows
-    .filter((row) => row[0])
-    .map((row) => ({
-      reason: row[0] ?? "",
-      amount: toNumber(row[1]),
-    }));
+  const gegevensId = process.env.GOOGLE_SHEET_ID;
+  if (!email || !rawKey || !gegevensId) return null;
+  return {
+    email,
+    privateKey: rawKey.replace(/\\n/g, "\n"),
+    gegevensId,
+    finesId: process.env.GOOGLE_FINES_SHEET_ID || gegevensId,
+  };
 }
 
 async function loadTeamDataFromSheet(): Promise<TeamData> {
@@ -86,24 +56,41 @@ async function loadTeamDataFromSheet(): Promise<TeamData> {
     });
     const sheets = google.sheets({ version: "v4", auth });
 
-    const [playersRes, finesRes, tariffsRes] = await Promise.all([
+    const [squadRes, attendanceRes, finesRes, tariffsRes] = await Promise.all([
       sheets.spreadsheets.values.get({
-        spreadsheetId: credentials.sheetId,
+        spreadsheetId: credentials.gegevensId,
         range: RANGES.players,
       }),
       sheets.spreadsheets.values.get({
-        spreadsheetId: credentials.sheetId,
-        range: RANGES.fines,
+        spreadsheetId: credentials.gegevensId,
+        range: RANGES.attendance,
       }),
       sheets.spreadsheets.values.get({
-        spreadsheetId: credentials.sheetId,
-        range: RANGES.tariffs,
+        spreadsheetId: credentials.finesId,
+        range: RANGES.fines,
       }),
+      // 'Tarieven' tab is optional — swallow a missing-tab error, fall back below.
+      sheets.spreadsheets.values
+        .get({ spreadsheetId: credentials.finesId, range: RANGES.tariffs })
+        .catch(() => ({ data: { values: undefined } })),
     ]);
 
-    const players = rowsToPlayers((playersRes.data.values as string[][]) ?? []);
-    const fines = rowsToFines((finesRes.data.values as string[][]) ?? []);
-    const tariffs = rowsToTariffs((tariffsRes.data.values as string[][]) ?? []);
+    const squad = parseSquadInfo((squadRes.data.values as string[][]) ?? []);
+    const { attendance, rosterOrder } = parseAttendance(
+      (attendanceRes.data.values as string[][]) ?? []
+    );
+    const fines = buildFines((finesRes.data.values as string[][]) ?? []);
+    const tariffs = buildTariffs((tariffsRes.data.values as string[][]) ?? []);
+
+    const finesByPlayer = new Map<string, number>();
+    for (const fine of fines) {
+      finesByPlayer.set(
+        fine.player,
+        (finesByPlayer.get(fine.player) ?? 0) + fine.amount
+      );
+    }
+
+    const players = buildPlayers(squad, attendance, rosterOrder, finesByPlayer);
 
     return {
       players,
@@ -114,7 +101,10 @@ async function loadTeamDataFromSheet(): Promise<TeamData> {
       isPlaceholder: false,
     };
   } catch (error) {
-    console.error("[sheets] Sync met Google Sheet mislukt, val terug op placeholder data:", error);
+    console.error(
+      "[sheets] Sync met Google Sheet mislukt, val terug op placeholder data:",
+      error
+    );
     return placeholderTeamData;
   }
 }

@@ -4,12 +4,13 @@ import { PlayerCard } from "@/components/selectie/player-card";
 export default async function SelectiePage() {
   const teamData = await getTeamData();
   const players = teamData.players.slice().sort((a, b) => a.nr - b.nr);
+  const hasStats = teamData.players.some((p) => p.goals + p.assists > 0);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="grid items-start gap-3 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
         {players.map((player) => (
-          <PlayerCard key={player.nr} player={player} />
+          <PlayerCard key={player.nr} player={player} hasStats={hasStats} />
         ))}
       </div>
 

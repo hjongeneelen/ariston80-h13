@@ -3,7 +3,14 @@
 import { useState } from "react";
 import type { Player } from "@/lib/types";
 
-export function PlayerCard({ player }: { player: Player }) {
+export function PlayerCard({
+  player,
+  hasStats = false,
+}: {
+  player: Player;
+  /** whether the team tracks goals/assists at all (sheets don't, so hide those cells) */
+  hasStats?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -19,7 +26,8 @@ export function PlayerCard({ player }: { player: Player }) {
         <div className="min-w-0 flex-1">
           <div className="text-[16px] font-bold leading-tight">{player.name}</div>
           <div className="text-[13px] text-navy/50">
-            &quot;{player.nickname}&quot; · {player.position}
+            {player.nickname ? `"${player.nickname}" · ` : ""}
+            {player.position || "—"}
           </div>
         </div>
         <span className="font-mono text-[11px] text-navy/40">{open ? "—" : "+"}</span>
@@ -27,12 +35,21 @@ export function PlayerCard({ player }: { player: Player }) {
 
       {open ? (
         <div className="mt-3 grid grid-cols-4 gap-2.5 border-t border-navy/8 pt-3">
+          <Stat label="Aanw" value={`${player.attendancePct ?? "–"}%`} />
           <Stat label="Wed" value={String(player.played)} />
-          <Stat label="Goals" value={String(player.goals)} color="var(--color-red)" />
-          <Stat label="Ass" value={String(player.assists)} color="var(--color-navy-light)" />
-          <Stat label="Aanw" value={`${player.attendancePct}%`} />
+          {hasStats ? (
+            <>
+              <Stat label="Goals" value={String(player.goals)} color="var(--color-red)" />
+              <Stat label="Ass" value={String(player.assists)} color="var(--color-navy-light)" />
+            </>
+          ) : (
+            <>
+              <Stat label="Streak" value={String(player.streak)} />
+              <Stat label="Fines" value={`€${player.fines}`} color="var(--color-red)" />
+            </>
+          )}
           <p className="col-span-4 mt-1 text-[13.5px] leading-[1.45] text-navy/62">
-            {player.note}
+            {player.note || "—"}
           </p>
         </div>
       ) : null}

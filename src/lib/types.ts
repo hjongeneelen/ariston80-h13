@@ -30,7 +30,8 @@ export type Player = {
   minutes: number;
   goals: number;
   assists: number;
-  attendancePct: number;
+  /** percentage, or null when the player has no attendance decisions yet */
+  attendancePct: number | null;
   yellowCards: number;
   redCards: number;
   motm: number;

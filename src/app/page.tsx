@@ -30,6 +30,7 @@ export default async function HomePage() {
   const lastPlayed = playedMatches(matches).slice(0, 4);
   const scorers = topScorers(teamData.players, 5);
   const awards = deriveAwards(teamData.players);
+  const hasScoring = teamData.players.some((p) => p.goals + p.assists > 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -83,11 +84,13 @@ export default async function HomePage() {
 
       <section className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))]">
         <StatTile label="Gespeeld" value={String(playedMatches(matches).length)} />
-        <StatTile
-          label="Goals dit seizoen"
-          value={String(totalGoals(teamData.players))}
-          valueColor="var(--color-red)"
-        />
+        {hasScoring ? (
+          <StatTile
+            label="Goals dit seizoen"
+            value={String(totalGoals(teamData.players))}
+            valueColor="var(--color-red)"
+          />
+        ) : null}
         <StatTile label="Opkomst" value={`${averageAttendance(teamData.players)}%`} />
         {teamConfig.showFinePot ? (
           <StatTile label="Boetepot" value={formatEuro(teamData.finePotTotal)} />
@@ -123,29 +126,31 @@ export default async function HomePage() {
           )}
         </Card>
 
-        <Card>
-          <CardHeader title="Topscorers" />
-          {scorers.length === 0 ? (
-            <p className="px-4 py-4 text-[14px] text-navy/55">
-              Nog geen speler-statistieken gesynchroniseerd.
-            </p>
-          ) : (
-            scorers.map((p, i) => (
-              <CardRow key={p.nr}>
-                <span className="font-mono w-4 flex-none text-[12px] text-navy/40">
-                  {i + 1}
-                </span>
-                <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
-                  {p.name}
-                </span>
-                <span className="text-[13px] text-navy/50">{p.assists} assists</span>
-                <span className="font-display w-[26px] flex-none text-right text-[17px] text-red">
-                  {p.goals}
-                </span>
-              </CardRow>
-            ))
-          )}
-        </Card>
+        {hasScoring ? (
+          <Card>
+            <CardHeader title="Topscorers" />
+            {scorers.length === 0 ? (
+              <p className="px-4 py-4 text-[14px] text-navy/55">
+                Nog geen speler-statistieken gesynchroniseerd.
+              </p>
+            ) : (
+              scorers.map((p, i) => (
+                <CardRow key={p.nr}>
+                  <span className="font-mono w-4 flex-none text-[12px] text-navy/40">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">
+                    {p.name}
+                  </span>
+                  <span className="text-[13px] text-navy/50">{p.assists} assists</span>
+                  <span className="font-display w-[26px] flex-none text-right text-[17px] text-red">
+                    {p.goals}
+                  </span>
+                </CardRow>
+              ))
+            )}
+          </Card>
+        ) : null}
       </section>
 
       {awards.length > 0 ? (
